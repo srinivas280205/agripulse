@@ -1,10 +1,8 @@
 {
   "version": 2,
-  "routes": [
-    { "src": "/api/advisory", "dest": "/api/advisory.js" },
-    { "src": "/api/market", "dest": "/api/market.js" },
-    { "src": "/sw.js", "dest": "/sw.js" },
-    { "src": "/manifest.json", "dest": "/manifest.json" },
-    { "src": "/(.*)", "dest": "/index.html" }
+  "rewrites": [
+    { "source": "/api/advisory", "destination": "/api/advisory.js" },
+    { "source": "/api/market", "destination": "/api/market.js" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
