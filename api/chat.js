@@ -18,17 +18,46 @@ Rules:
 - Be friendly and simple — farmers may have low literacy
 - Never make up data — say "I don't know" if unsure`;
 
-  const body = JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 300, system, messages });
-  const key = process.env.ANTHROPIC_API_KEY;
+  const key = process.env.GROK_API_KEY;
   if (!key) return res.status(500).json({ error: 'API key not configured' });
 
-  const result = await new Promise((resolve, reject) => {
-    const r = https.request({ hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(body) }
-    }, res => { let d = ''; res.on('data', c => d += c); res.on('end', () => resolve(JSON.parse(d))); });
-    r.on('error', reject); r.write(body); r.end();
+  // xAI Grok uses OpenAI-compatible API format
+  const payload = JSON.stringify({
+    model: 'grok-3-mini',          // fast, cheap — good for farming Q&A
+    max_tokens: 300,
+    messages: [
+      { role: 'system', content: system },
+      ...messages
+    ]
   });
 
-  const reply = (result.content || []).map(c => c.text || '').join('') || 'Sorry, please try again.';
+  const result = await new Promise((resolve, reject) => {
+    const r = https.request({
+      hostname: 'api.x.ai',
+      path: '/v1/chat/completions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + key,
+        'Content-Length': Buffer.byteLength(payload)
+      }
+    }, res => {
+      let d = '';
+      res.on('data', c => d += c);
+      res.on('end', () => {
+        try { resolve(JSON.parse(d)); }
+        catch(e) { reject(new Error('Invalid JSON from xAI: ' + d.slice(0, 200))); }
+      });
+    });
+    r.on('error', reject);
+    r.write(payload);
+    r.end();
+  });
+
+  // xAI returns OpenAI-style response: choices[0].message.content
+  const reply = (result.choices && result.choices[0] && result.choices[0].message && result.choices[0].message.content)
+    ? result.choices[0].message.content.trim()
+    : (result.error ? result.error.message : 'Sorry, please try again.');
+
   res.json({ reply });
 };
