@@ -21,9 +21,8 @@ Rules:
   const key = process.env.GROK_API_KEY;
   if (!key) return res.status(500).json({ error: 'API key not configured' });
 
-  // xAI Grok uses OpenAI-compatible API format
   const payload = JSON.stringify({
-    model: 'grok-3-mini',          // fast, cheap — good for farming Q&A
+    model: 'grok-3-mini',
     max_tokens: 300,
     messages: [
       { role: 'system', content: system },
@@ -46,7 +45,7 @@ Rules:
       res.on('data', c => d += c);
       res.on('end', () => {
         try { resolve(JSON.parse(d)); }
-        catch(e) { reject(new Error('Invalid JSON from xAI: ' + d.slice(0, 200))); }
+        catch(e) { reject(new Error('Invalid response')); }
       });
     });
     r.on('error', reject);
@@ -54,10 +53,6 @@ Rules:
     r.end();
   });
 
-  // xAI returns OpenAI-style response: choices[0].message.content
-  const reply = (result.choices && result.choices[0] && result.choices[0].message && result.choices[0].message.content)
-    ? result.choices[0].message.content.trim()
-    : (result.error ? result.error.message : 'Sorry, please try again.');
-
+  const reply = (result.choices?.[0]?.message?.content || '').trim() || 'Sorry, please try again.';
   res.json({ reply });
 };
