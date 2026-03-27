@@ -8,8 +8,8 @@ export default async function handler(req, res) {
   const { messages, context } = req.body || {};
   if (!messages) return res.status(400).json({ error: 'messages required' });
 
-  const key = process.env.GROK_API_KEY;
-  if (!key) return res.status(500).json({ error: 'GROK_API_KEY not set in Vercel environment variables' });
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) return res.status(500).json({ error: 'GEMINI_API_KEY not set' });
 
   const system = `You are AgriPulse AI, an expert farming assistant for Tamil Nadu farmers. ${context || ''}
 - Answer in Tamil if question is in Tamil, English if in English
@@ -18,30 +18,33 @@ export default async function handler(req, res) {
 - Be friendly and simple
 - Never make up data`;
 
+  // Convert messages to Gemini format
+  const geminiMessages = messages.map(m => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }]
+  }));
+
   try {
-    const response = await fetch('https://api.x.ai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${key}`
-      },
-      body: JSON.stringify({
-        model: 'grok-3-mini',
-        max_tokens: 300,
-        messages: [
-          { role: 'system', content: system },
-          ...messages
-        ]
-      })
-    });
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: system }] },
+          contents: geminiMessages,
+          generationConfig: { maxOutputTokens: 300, temperature: 0.7 }
+        })
+      }
+    );
 
     const data = await response.json();
 
     if (!response.ok) {
-      return res.status(500).json({ error: data.error?.message || 'xAI API error' });
+      return res.status(500).json({ error: data.error?.message || 'Gemini API error' });
     }
 
-    const reply = data.choices?.[0]?.message?.content?.trim() || 'Sorry, please try again.';
+    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 'Sorry, please try again.';
     res.json({ reply });
 
   } catch (err) {
