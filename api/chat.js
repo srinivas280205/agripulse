@@ -1,4 +1,4 @@
-export default async function handler(req, res) {
+module.exports = async function(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -18,7 +18,6 @@ export default async function handler(req, res) {
 - Be friendly and simple
 - Never make up data`;
 
-  // Convert messages to Gemini format
   const geminiMessages = messages.map(m => ({
     role: m.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: m.content }]
@@ -39,9 +38,8 @@ export default async function handler(req, res) {
     );
 
     const data = await response.json();
-
     if (!response.ok) {
-      return res.status(500).json({ error: data.error?.message || 'Gemini API error' });
+      return res.status(500).json({ error: data.error?.message || 'Gemini error' });
     }
 
     const reply = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 'Sorry, please try again.';
@@ -50,4 +48,4 @@ export default async function handler(req, res) {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-}
+};
