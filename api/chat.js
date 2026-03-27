@@ -1,3 +1,5 @@
+const https = require('https');
+
 module.exports = async function(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -11,41 +13,66 @@ module.exports = async function(req, res) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return res.status(500).json({ error: 'GEMINI_API_KEY not set' });
 
-  const system = `You are AgriPulse AI, an expert farming assistant for Tamil Nadu farmers. ${context || ''}
-- Answer in Tamil if question is in Tamil, English if in English
-- Keep answers under 80 words, concise and practical
-- Give specific advice for Tamil Nadu crops and climate
-- Be friendly and simple
-- Never make up data`;
+  const system = `You are AgriPulse AI, a farming assistant for Tamil Nadu farmers. ${context || ''}
+Reply in Tamil if asked in Tamil, English otherwise. Max 80 words. Practical advice only.`;
 
-  const geminiMessages = messages.map(m => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }]
-  }));
+  const geminiMessages = messages.map(function(m) {
+    return {
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }]
+    };
+  });
+
+  const bodyData = JSON.stringify({
+    system_instruction: { parts: [{ text: system }] },
+    contents: geminiMessages,
+    generationConfig: { maxOutputTokens: 300, temperature: 0.7 }
+  });
 
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
-      {
+    const result = await new Promise(function(resolve, reject) {
+      const path = '/v1beta/models/gemini-1.5-flash:generateContent?key=' + key;
+      const r = https.request({
+        hostname: 'generativelanguage.googleapis.com',
+        path: path,
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: system }] },
-          contents: geminiMessages,
-          generationConfig: { maxOutputTokens: 300, temperature: 0.7 }
-        })
-      }
-    );
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(bodyData)
+        }
+      }, function(response) {
+        let d = '';
+        response.on('data', function(c) { d += c; });
+        response.on('end', function() {
+          try { resolve({ status: response.statusCode, body: JSON.parse(d) }); }
+          catch(e) { reject(new Error('Bad JSON: ' + d.slice(0, 200))); }
+        });
+      });
+      r.on('error', reject);
+      r.write(bodyData);
+      r.end();
+    });
 
-    const data = await response.json();
-    if (!response.ok) {
-      return res.status(500).json({ error: data.error?.message || 'Gemini error' });
+    // Return full Gemini response for debugging
+    if (result.status !== 200) {
+      return res.status(500).json({ 
+        error: result.body.error ? result.body.error.message : 'Gemini error',
+        gemini_status: result.status,
+        gemini_full: result.body
+      });
     }
 
-    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 'Sorry, please try again.';
-    res.json({ reply });
+    const reply = result.body.candidates &&
+                  result.body.candidates[0] &&
+                  result.body.candidates[0].content &&
+                  result.body.candidates[0].content.parts &&
+                  result.body.candidates[0].content.parts[0].text
+                  ? result.body.candidates[0].content.parts[0].text.trim()
+                  : 'Sorry, please try again.';
 
-  } catch (err) {
+    res.json({ reply: reply });
+
+  } catch(err) {
     res.status(500).json({ error: err.message });
   }
 };
